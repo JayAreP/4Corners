@@ -6,6 +6,19 @@ Cross-platform disk I/O benchmark tool that measures the "4 corners" of storage 
 - Read IOPS
 - Write IOPS
 
+## Important: Windows Administrator Requirements
+
+**On Windows, testing physical drives (\\.\PhysicalDrive*) requires Administrator privileges.**
+
+To run as Administrator:
+1. Open Command Prompt or PowerShell as Administrator (right-click → "Run as Administrator")
+2. Navigate to the directory containing 4cornerscli.exe
+3. Run your benchmark command
+
+If you see `0.00 MB/s | 0 IOPS` output, you likely need to run as Administrator.
+
+For testing without admin rights, use file-based testing with `-create-file` (see examples below).
+
 ## Installation
 
 Pre-built binaries are provided for:

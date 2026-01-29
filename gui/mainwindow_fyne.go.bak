@@ -94,13 +94,6 @@ type MainWindow struct {
 }
 
 func ShowMainWindow(a fyne.App) {
-	defer func() {
-		if r := recover(); r != nil {
-			// Re-panic to be caught by main's recovery handler
-			panic(r)
-		}
-	}()
-
 	a.Settings().SetTheme(&customTheme{})
 
 	w := a.NewWindow("4Corners Disk Benchmark")

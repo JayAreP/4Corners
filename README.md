@@ -44,6 +44,10 @@ GOOS=linux GOARCH=amd64 go build -o 4corners
 
 ## Usage
 
+### GUI Application
+
+**⚠️ OpenGL 2.0+ Required** - The GUI requires OpenGL support. If you encounter errors, see [GUI-REQUIREMENTS.md](GUI-REQUIREMENTS.md) for troubleshooting, or use the CLI version.
+
 1. **Run the application**: Execute the compiled binary
 2. **Select Device**: Click "Select Device" to choose a block device
 3. **Prep Device** (Optional): Fill the device with random data for consistent testing
@@ -51,9 +55,24 @@ GOOS=linux GOARCH=amd64 go build -o 4corners
 5. **Save Report** (Optional): Choose a folder to save results
 6. **Run**: Click "Run" to start the benchmark suite
 
+### CLI Alternative (Recommended for Remote/Automated Use)
+
+For systems without GUI support or when running in automated scripts, use the CLI version:
+```bash
+# Windows (run as Administrator!)
+4cornerscli.exe -device \\.\PhysicalDrive1
+
+# Linux (run as root or with sudo)
+sudo ./4cornerscli -device /dev/sdb
+```
+
+See [CLI-README.md](CLI-README.md) for full CLI documentation.
+
 ### Important Notes
 
-- **Administrator/Root privileges required** to access raw block devices
+- **Administrator/Root privileges required** to access raw block devices on Windows/Linux
+- **Windows**: Must run Command Prompt/PowerShell as Administrator for physical drive access
+- **GUI OpenGL Requirement**: If GUI fails with OpenGL errors, use the CLI version
 - **WARNING**: Write tests can destroy data on the selected device
 - Test duration is per-test (4 tests total)
 - Recommended to prep device before first run

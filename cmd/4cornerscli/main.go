@@ -11,20 +11,24 @@ import (
 )
 
 type config struct {
-	devicePath       string
-	duration         int
-	readTPThreads    int
-	writeTPThreads   int
-	readIOPSThreads  int
-	writeIOPSThreads int
-	readTPBlockSize  int
-	writeTPBlockSize int
-	readIOPSBlockSize int
+	devicePath         string
+	duration           int
+	readTPThreads      int
+	writeTPThreads     int
+	readIOPSThreads    int
+	writeIOPSThreads   int
+	readTPBlockSize    int
+	writeTPBlockSize   int
+	readIOPSBlockSize  int
 	writeIOPSBlockSize int
-	prepDevice       bool
-	createFile       bool
-	fileSize         int64
-	runTests         string
+	readTPQueueDepth   int
+	writeTPQueueDepth  int
+	readIOPSQueueDepth int
+	writeIOPSQueueDepth int
+	prepDevice         bool
+	createFile         bool
+	fileSize           int64
+	runTests           string
 }
 
 func main() {
@@ -82,19 +86,23 @@ func main() {
 	
 	// Configure benchmark
 	config := benchmark.Config{
-		Device:            cfg.devicePath,
-		ReadTPIOSize:      fmt.Sprintf("%dk", cfg.readTPBlockSize),
-		WriteTPIOSize:     fmt.Sprintf("%dk", cfg.writeTPBlockSize),
-		ReadIOPSIOSize:    fmt.Sprintf("%dk", cfg.readIOPSBlockSize),
-		WriteIOPSIOSize:   fmt.Sprintf("%dk", cfg.writeIOPSBlockSize),
-		ReadTPThreads:     cfg.readTPThreads,
-		WriteTPThreads:    cfg.writeTPThreads,
-		ReadIOPSThreads:   cfg.readIOPSThreads,
-		WriteIOPSThreads:  cfg.writeIOPSThreads,
-		ReadTPDuration:    cfg.duration,
-		WriteTPDuration:   cfg.duration,
-		ReadIOPSDuration:  cfg.duration,
-		WriteIOPSDuration: cfg.duration,
+		Device:              cfg.devicePath,
+		ReadTPIOSize:        fmt.Sprintf("%dk", cfg.readTPBlockSize),
+		WriteTPIOSize:       fmt.Sprintf("%dk", cfg.writeTPBlockSize),
+		ReadIOPSIOSize:      fmt.Sprintf("%dk", cfg.readIOPSBlockSize),
+		WriteIOPSIOSize:     fmt.Sprintf("%dk", cfg.writeIOPSBlockSize),
+		ReadTPThreads:       cfg.readTPThreads,
+		WriteTPThreads:      cfg.writeTPThreads,
+		ReadIOPSThreads:     cfg.readIOPSThreads,
+		WriteIOPSThreads:    cfg.writeIOPSThreads,
+		ReadTPDuration:      cfg.duration,
+		WriteTPDuration:     cfg.duration,
+		ReadIOPSDuration:    cfg.duration,
+		WriteIOPSDuration:   cfg.duration,
+		ReadTPQueueDepth:    cfg.readTPQueueDepth,
+		WriteTPQueueDepth:   cfg.writeTPQueueDepth,
+		ReadIOPSQueueDepth:  cfg.readIOPSQueueDepth,
+		WriteIOPSQueueDepth: cfg.writeIOPSQueueDepth,
 	}
 	
 	results := &benchmark.Results{
@@ -110,7 +118,7 @@ func main() {
 	// Run Read Throughput test
 	if runReadTP {
 		fmt.Println("Running Read Throughput Test...")
-		throughput, iops, latency, err := engine.RunSingleTest(cfg.devicePath, int64(cfg.readTPBlockSize*1024), cfg.readTPThreads, cfg.duration, false, progressCallback)
+		throughput, iops, latency, err := engine.RunSingleTest(cfg.devicePath, int64(cfg.readTPBlockSize*1024), cfg.readTPThreads, cfg.duration, cfg.readTPQueueDepth, false, progressCallback)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 		} else {
@@ -119,6 +127,7 @@ func main() {
 			results.ReadTPLatencyMs = latency
 			results.ReadTPThreads = cfg.readTPThreads
 			results.ReadTPDuration = cfg.duration
+			results.ReadTPQueueDepth = cfg.readTPQueueDepth
 		}
 		fmt.Println()
 	}
@@ -126,7 +135,7 @@ func main() {
 	// Run Write Throughput test
 	if runWriteTP {
 		fmt.Println("Running Write Throughput Test...")
-		throughput, iops, latency, err := engine.RunSingleTest(cfg.devicePath, int64(cfg.writeTPBlockSize*1024), cfg.writeTPThreads, cfg.duration, true, progressCallback)
+		throughput, iops, latency, err := engine.RunSingleTest(cfg.devicePath, int64(cfg.writeTPBlockSize*1024), cfg.writeTPThreads, cfg.duration, cfg.writeTPQueueDepth, true, progressCallback)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 		} else {
@@ -135,6 +144,7 @@ func main() {
 			results.WriteTPLatencyMs = latency
 			results.WriteTPThreads = cfg.writeTPThreads
 			results.WriteTPDuration = cfg.duration
+			results.WriteTPQueueDepth = cfg.writeTPQueueDepth
 		}
 		fmt.Println()
 	}
@@ -142,7 +152,7 @@ func main() {
 	// Run Read IOPS test
 	if runReadIOPS {
 		fmt.Println("Running Read IOPS Test...")
-		throughput, iops, latency, err := engine.RunSingleTest(cfg.devicePath, int64(cfg.readIOPSBlockSize*1024), cfg.readIOPSThreads, cfg.duration, false, progressCallback)
+		throughput, iops, latency, err := engine.RunSingleTest(cfg.devicePath, int64(cfg.readIOPSBlockSize*1024), cfg.readIOPSThreads, cfg.duration, cfg.readIOPSQueueDepth, false, progressCallback)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 		} else {
@@ -151,6 +161,7 @@ func main() {
 			results.ReadIOPSLatencyMs = latency
 			results.ReadIOPSThreads = cfg.readIOPSThreads
 			results.ReadIOPSDuration = cfg.duration
+			results.ReadIOPSQueueDepth = cfg.readIOPSQueueDepth
 		}
 		fmt.Println()
 	}
@@ -158,7 +169,7 @@ func main() {
 	// Run Write IOPS test
 	if runWriteIOPS {
 		fmt.Println("Running Write IOPS Test...")
-		throughput, iops, latency, err := engine.RunSingleTest(cfg.devicePath, int64(cfg.writeIOPSBlockSize*1024), cfg.writeIOPSThreads, cfg.duration, true, progressCallback)
+		throughput, iops, latency, err := engine.RunSingleTest(cfg.devicePath, int64(cfg.writeIOPSBlockSize*1024), cfg.writeIOPSThreads, cfg.duration, cfg.writeIOPSQueueDepth, true, progressCallback)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 		} else {
@@ -167,6 +178,7 @@ func main() {
 			results.WriteIOPSLatencyMs = latency
 			results.WriteIOPSThreads = cfg.writeIOPSThreads
 			results.WriteIOPSDuration = cfg.duration
+			results.WriteIOPSQueueDepth = cfg.writeIOPSQueueDepth
 		}
 		fmt.Println()
 	}
@@ -198,6 +210,11 @@ func parseFlags() config {
 	flag.IntVar(&cfg.writeTPThreads, "write-tp-threads", 16, "Write throughput threads")
 	flag.IntVar(&cfg.readIOPSThreads, "read-iops-threads", 120, "Read IOPS threads")
 	flag.IntVar(&cfg.writeIOPSThreads, "write-iops-threads", 120, "Write IOPS threads")
+	
+	flag.IntVar(&cfg.readTPQueueDepth, "read-tp-qd", 4, "Read throughput queue depth per thread")
+	flag.IntVar(&cfg.writeTPQueueDepth, "write-tp-qd", 4, "Write throughput queue depth per thread")
+	flag.IntVar(&cfg.readIOPSQueueDepth, "read-iops-qd", 4, "Read IOPS queue depth per thread")
+	flag.IntVar(&cfg.writeIOPSQueueDepth, "write-iops-qd", 4, "Write IOPS queue depth per thread")
 	
 	flag.IntVar(&cfg.readTPBlockSize, "read-tp-bs", 128, "Read throughput block size (KB)")
 	flag.IntVar(&cfg.writeTPBlockSize, "write-tp-bs", 64, "Write throughput block size (KB)")
