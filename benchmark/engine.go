@@ -303,7 +303,7 @@ func (e *Engine) runSingleTest(devicePath string, ioSize int64, threads int, dur
 					latencyMs = float64(latencyDelta) / float64(opsDelta) / 1000000.0
 				}
 				
-				progressCallback(fmt.Sprintf("  %.0fs: %.2f MB/s | %.0f IOPS | %.2f ms", elapsed, mbps, iops, latencyMs))
+				progressCallback(fmt.Sprintf("\r  %.0fs: %.2f MB/s | %.0f IOPS | %.2f ms                    ", elapsed, mbps, iops, latencyMs))
 			case <-stopChan:
 				return
 			case <-e.stopChan:
@@ -323,6 +323,9 @@ func (e *Engine) runSingleTest(devicePath string, ioSize int64, threads int, dur
 	
 	close(stopChan)
 	wg.Wait()
+	
+	// Print newline to move to next line after progress updates
+	progressCallback("\n")
 	
 	elapsed := time.Since(startTime).Seconds()
 	ops := totalOps.Load()
