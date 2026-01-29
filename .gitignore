@@ -1,0 +1,28 @@
+# Binaries
+4corners
+4corners.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test reports
+*-report-*.json
+*-report-*.txt
+
+# Go
+*.o
+*.a
+*.so
+go.work
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
