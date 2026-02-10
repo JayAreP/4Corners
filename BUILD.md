@@ -251,9 +251,69 @@ cargo fmt
 RUST_LOG=debug cargo run --release -- --device ... --duration 10
 ```
 
+## Cross-Compilation (Building Linux Binary on Windows)
+
+### Option 1: WSL2 (Recommended)
+
+If you have Windows Subsystem for Linux installed:
+
+```powershell
+# From PowerShell, launch into WSL
+wsl -d Ubuntu  # or your WSL distro name
+```
+
+Inside WSL:
+```bash
+# Navigate to the 4c directory
+cd /mnt/c/Users/Jar/Dropbox/VSCode2/4c
+
+# Build release binary
+cargo build --release
+
+# Binary will be at: target/release/4c
+```
+
+**Advantages:**
+- Native Linux environment
+- Full io_uring support
+- Fastest cross-compilation option
+- No Docker required
+
+**Requirements:**
+- WSL2 installed with a Linux distribution (Ubuntu, Debian, Fedora, etc.)
+- Rust installed in WSL (separate from Windows Rust)
+
+### Option 2: Docker + cross tool
+
+If you have Docker Desktop installed:
+
+```powershell
+# Install cross (one-time)
+cargo install cross
+
+# Build Linux binary
+cd C:\Users\Jar\Dropbox\VSCode2\4c
+cross build --release --target x86_64-unknown-linux-gnu
+```
+
+Binary: `target/x86_64-unknown-linux-gnu/release/4c`
+
+**Advantages:**
+- Works without WSL2
+- Minimal setup
+
+**Requirements:**
+- Docker Desktop running
+- ~500MB+ disk space
+
+### Option 3: Virtual Machine
+
+Set up a Linux VM in VirtualBox, Hyper-V, or similar, and build natively on that platform. Most straightforward but slowest option.
+
 ## Performance Notes
 
 - **Release builds are essential for benchmarking** — debug binaries run ~10-20% slower IOPS
 - **Windows IOCP** requires FILE_FLAG_OVERLAPPED on device open (implemented)
 - **Linux io_uring** requires kernel 5.1+ (check with `uname -r`)
 - **Aligned I/O buffers** ensure direct I/O compatibility on all platforms
+- **Linux binaries built on Windows** — Use WSL2 for the simplest, fastest cross-compilation experience

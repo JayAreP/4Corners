@@ -152,35 +152,32 @@ pub fn worker_io_uring(
     let mut start_times: Vec<std::time::Instant> = vec![std::time::Instant::now(); qd];
 
     // Submit initial batch
-    {
-        let sq = ring.submission();
-        for slot in 0..qd {
-            let off = offsets[offset_idx];
-            offset_idx = (offset_idx + 1) % offsets.len();
-            start_times[slot] = std::time::Instant::now();
+    for slot in 0..qd {
+        let off = offsets[offset_idx];
+        offset_idx = (offset_idx + 1) % offsets.len();
+        start_times[slot] = std::time::Instant::now();
 
-            let entry = if is_write {
-                opcode::Write::new(
-                    types::Fd(dev.fd),
-                    buffers[slot].ptr,
-                    io_size as u32,
-                )
-                .offset(off)
-                .build()
-                .user_data(slot as u64)
-            } else {
-                opcode::Read::new(
-                    types::Fd(dev.fd),
-                    buffers[slot].ptr,
-                    io_size as u32,
-                )
-                .offset(off)
-                .build()
-                .user_data(slot as u64)
-            };
+        let entry = if is_write {
+            opcode::Write::new(
+                types::Fd(dev.fd),
+                buffers[slot].ptr,
+                io_size as u32,
+            )
+            .offset(off)
+            .build()
+            .user_data(slot as u64)
+        } else {
+            opcode::Read::new(
+                types::Fd(dev.fd),
+                buffers[slot].ptr,
+                io_size as u32,
+            )
+            .offset(off)
+            .build()
+            .user_data(slot as u64)
+        };
 
-            unsafe { sq.push(&entry).ok() };
-        }
+        unsafe { ring.submission().push(&entry).ok() };
     }
     ring.submit()?;
 
@@ -193,12 +190,17 @@ pub fn worker_io_uring(
         // Wait for at least 1 completion
         ring.submit_and_wait(1)?;
 
-        // Process all available completions
-        let cq = ring.completion();
-        for cqe in cq {
-            let slot = cqe.user_data() as usize;
-            let result = cqe.result();
+        // Collect completions first
+        let mut completions = Vec::new();
+        {
+            let cq = ring.completion();
+            for cqe in cq {
+                completions.push((cqe.user_data() as usize, cqe.result()));
+            }
+        }
 
+        // Process completions and reissue
+        for (slot, result) in completions {
             if result > 0 {
                 op_count += 1;
                 if op_count % 64 == 0 {
@@ -237,6 +239,7 @@ pub fn worker_io_uring(
 
             unsafe { ring.submission().push(&entry).ok() };
         }
+        ring.submit()?;
 
         // Batch update metrics
         if local_ops >= batch_size {
