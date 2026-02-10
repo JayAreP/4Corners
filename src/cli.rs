@@ -3,12 +3,13 @@ use clap::Parser;
 #[derive(Parser, Debug, Clone)]
 #[command(name = "4c", about = "4Corners Disk Benchmark - CLI")]
 pub struct Args {
-    /// Device or file path (required)
+    /// Device or file path(s) - can specify multiple times or comma-separated
+    /// On Windows: use \\.\PhysicalDrive4 or just 4
     #[arg(short, long)]
-    pub device: String,
+    pub device: Vec<String>,
 
     /// Test duration in seconds
-    #[arg(long, default_value_t = 60)]
+    #[arg(long, default_value_t = 30)]
     pub duration: u32,
 
     /// Read throughput threads
@@ -36,11 +37,11 @@ pub struct Args {
     pub write_tp_qd: u32,
 
     /// Read IOPS queue depth per thread
-    #[arg(long, default_value_t = 32)]
+    #[arg(long, default_value_t = 1)]
     pub read_iops_qd: u32,
 
     /// Write IOPS queue depth per thread
-    #[arg(long, default_value_t = 32)]
+    #[arg(long, default_value_t = 1)]
     pub write_iops_qd: u32,
 
     /// Read throughput block size (KB)

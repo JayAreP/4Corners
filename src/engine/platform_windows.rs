@@ -27,6 +27,25 @@ fn to_wide(s: &str) -> Vec<u16> {
     OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
 }
 
+/// Normalize device path on Windows
+/// Accepts either \\.\PhysicalDrive4 or just 4 and returns the full path
+pub fn normalize_device_path(path: &str) -> String {
+    let trimmed = path.trim();
+
+    // If it's already a full path, return as-is
+    if trimmed.starts_with(r"\\.\") {
+        return trimmed.to_string();
+    }
+
+    // If it's just a number, convert to PhysicalDrive
+    if trimmed.parse::<u32>().is_ok() {
+        return format!(r"\\.\PhysicalDrive{}", trimmed);
+    }
+
+    // Otherwise assume it's a file path and return as-is
+    trimmed.to_string()
+}
+
 /// Open device for reading with direct I/O + overlapped
 pub fn open_device_read(path: &str) -> io::Result<DeviceHandle> {
     open_device(path, false)
@@ -282,63 +301,98 @@ pub fn worker_iocp(
         }
     }
 
-    // Completion loop
+    // Completion loop - batch completions with GetQueuedCompletionStatusEx
     let mut local_ops: u64 = 0;
     let mut local_bytes: u64 = 0;
     let batch_size: u64 = 256;
     let mut op_count: u64 = 0;
+    const MAX_COMPLETIONS: usize = 64;
 
     while !stop.load(std::sync::atomic::Ordering::Relaxed) {
-        let mut bytes_transferred: u32 = 0;
-        let mut completion_key: usize = 0;
-        let mut overlapped_ptr: *mut OVERLAPPED = ptr::null_mut();
+        let mut entries: [OVERLAPPED_ENTRY; MAX_COMPLETIONS] =
+            unsafe { std::mem::zeroed() };
+        let mut num_entries: u32 = 0;
 
-        // Wait for one completion (short timeout to check stop flag)
+        // Dequeue up to MAX_COMPLETIONS completions in one syscall
         let result = unsafe {
-            GetQueuedCompletionStatus(
+            GetQueuedCompletionStatusEx(
                 iocp,
-                &mut bytes_transferred,
-                &mut completion_key,
-                &mut overlapped_ptr,
+                entries.as_mut_ptr(),
+                MAX_COMPLETIONS as u32,
+                &mut num_entries,
                 1, // 1ms timeout
+                0, // not alertable
             )
         };
 
         if result == 0 {
-            let err = unsafe { GetLastError() };
-            if err == WAIT_TIMEOUT {
-                continue;
-            }
+            // Timeout or error - just loop back to check stop flag
+            continue;
+        }
+
+        // Process all completions in this batch
+        for i in 0..num_entries as usize {
+            let entry = &entries[i];
+            let overlapped_ptr = entry.lpOverlapped;
+
             if overlapped_ptr.is_null() {
                 continue;
             }
-            // I/O error on this slot - skip and reissue
+
+            // Find which slot completed
+            let slot = {
+                let base = overlappeds.as_ptr() as usize;
+                let completed = overlapped_ptr as usize;
+                (completed - base) / std::mem::size_of::<OVERLAPPED>()
+            };
+
+            if slot >= qd {
+                continue;
+            }
+
+            let bytes_transferred = entry.dwNumberOfBytesTransferred;
+
+            // Record latency (sample every 64th operation)
+            op_count += 1;
+            if op_count % 64 == 0 {
+                let lat_ns = start_times[slot].elapsed().as_nanos() as u64;
+                metrics.record_latency(lat_ns);
+            }
+
+            local_ops += 1;
+            local_bytes += bytes_transferred as u64;
+
+            // Reissue I/O on the completed slot
+            let off = offsets[offset_idx] as u64;
+            offset_idx = (offset_idx + 1) % offsets.len();
+
+            overlappeds[slot] = unsafe { std::mem::zeroed() };
+            overlappeds[slot].Anonymous.Anonymous.Offset = off as u32;
+            overlappeds[slot].Anonymous.Anonymous.OffsetHigh = (off >> 32) as u32;
+            start_times[slot] = std::time::Instant::now();
+
+            if is_write {
+                unsafe {
+                    WriteFile(
+                        dev.handle,
+                        buffers[slot].ptr as *const _,
+                        io_size as u32,
+                        ptr::null_mut(),
+                        &mut overlappeds[slot],
+                    );
+                }
+            } else {
+                unsafe {
+                    ReadFile(
+                        dev.handle,
+                        buffers[slot].ptr as *mut _,
+                        io_size as u32,
+                        ptr::null_mut(),
+                        &mut overlappeds[slot],
+                    );
+                }
+            }
         }
-
-        if overlapped_ptr.is_null() {
-            continue;
-        }
-
-        // Find which slot completed
-        let slot = {
-            let base = overlappeds.as_ptr() as usize;
-            let completed = overlapped_ptr as usize;
-            (completed - base) / std::mem::size_of::<OVERLAPPED>()
-        };
-
-        if slot >= qd {
-            continue;
-        }
-
-        // Record latency (sample every 64th operation)
-        op_count += 1;
-        if op_count % 64 == 0 {
-            let lat_ns = start_times[slot].elapsed().as_nanos() as u64;
-            metrics.record_latency(lat_ns);
-        }
-
-        local_ops += 1;
-        local_bytes += bytes_transferred as u64;
 
         // Batch update metrics
         if local_ops >= batch_size {
@@ -350,37 +404,6 @@ pub fn worker_iocp(
                 .fetch_add(local_bytes, std::sync::atomic::Ordering::Relaxed);
             local_ops = 0;
             local_bytes = 0;
-        }
-
-        // Reissue I/O on the completed slot
-        let off = offsets[offset_idx] as u64;
-        offset_idx = (offset_idx + 1) % offsets.len();
-
-        overlappeds[slot] = unsafe { std::mem::zeroed() };
-        overlappeds[slot].Anonymous.Anonymous.Offset = off as u32;
-        overlappeds[slot].Anonymous.Anonymous.OffsetHigh = (off >> 32) as u32;
-        start_times[slot] = std::time::Instant::now();
-
-        if is_write {
-            unsafe {
-                WriteFile(
-                    dev.handle,
-                    buffers[slot].ptr as *const _,
-                    io_size as u32,
-                    ptr::null_mut(),
-                    &mut overlappeds[slot],
-                );
-            }
-        } else {
-            unsafe {
-                ReadFile(
-                    dev.handle,
-                    buffers[slot].ptr as *mut _,
-                    io_size as u32,
-                    ptr::null_mut(),
-                    &mut overlappeds[slot],
-                );
-            }
         }
     }
 

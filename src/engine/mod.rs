@@ -57,23 +57,30 @@ impl Metrics {
     }
 }
 
-/// Configuration for a single benchmark test
+/// Configuration for a benchmark test (single or multiple devices)
 pub struct TestConfig {
-    pub device_path: String,
+    pub device_paths: Vec<String>,
     pub io_size: u64,
-    pub threads: u32,
+    pub threads: u32,  // per device
     pub queue_depth: u32,
     pub duration_secs: u32,
     pub is_write: bool,
 }
 
-/// Run a single benchmark test and return the result
+/// Run a benchmark test on one or more devices and return the result
 pub fn run_test(config: &TestConfig) -> io::Result<TestResult> {
     let test_type = if config.is_write { "Write" } else { "Read" };
     let io_kb = config.io_size / 1024;
 
+    if config.device_paths.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "No devices specified",
+        ));
+    }
+
     println!(
-        "  {} test: {}KB blocks, {} threads, QD={}, {} seconds",
+        "  {} test: {}KB blocks, {} threads per device, QD={}, {} seconds",
         test_type, io_kb, config.threads, config.queue_depth, config.duration_secs
     );
 
@@ -81,48 +88,62 @@ pub fn run_test(config: &TestConfig) -> io::Result<TestResult> {
     let stop = Arc::new(AtomicBool::new(false));
     let duration = Duration::from_secs(config.duration_secs as u64);
 
-    // Get device size
-    let device_size = get_device_size(&config.device_path)?;
-    if device_size == 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Device size is 0",
-        ));
+    // Collect device info (size and path)
+    let mut device_info = Vec::new();
+    let mut total_size: u64 = 0;
+
+    for device_path in &config.device_paths {
+        let device_size = get_device_size(device_path)?;
+        if device_size == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Device {} size is 0", device_path),
+            ));
+        }
+        device_info.push((device_path.clone(), device_size));
+        total_size += device_size;
     }
 
-    let test_range = device_size;
     println!(
-        "  Device size: {:.2} GB",
-        test_range as f64 / (1024.0 * 1024.0 * 1024.0)
+        "  Total device size: {:.2} GB ({} device{})",
+        total_size as f64 / (1024.0 * 1024.0 * 1024.0),
+        config.device_paths.len(),
+        if config.device_paths.len() == 1 { "" } else { "s" }
     );
 
     let start = Instant::now();
 
-    // Spawn worker threads
-    let mut handles = Vec::with_capacity(config.threads as usize);
-    for thread_id in 0..config.threads {
-        let metrics = Arc::clone(&metrics);
-        let stop = Arc::clone(&stop);
-        let device_path = config.device_path.clone();
-        let io_size = config.io_size;
-        let queue_depth = config.queue_depth;
-        let is_write = config.is_write;
+    // Spawn worker threads for all devices
+    let mut handles = Vec::new();
+    let mut global_thread_id = 0u32;
 
-        let handle = std::thread::spawn(move || {
-            if let Err(e) = worker::run_worker(
-                thread_id,
-                &device_path,
-                io_size,
-                queue_depth,
-                is_write,
-                test_range,
-                &stop,
-                &metrics,
-            ) {
-                eprintln!("  Worker {} error: {}", thread_id, e);
-            }
-        });
-        handles.push(handle);
+    for (device_path, device_size) in device_info {
+        for _thread_id in 0..config.threads {
+            let metrics = Arc::clone(&metrics);
+            let stop = Arc::clone(&stop);
+            let dev_path = device_path.clone();
+            let io_size = config.io_size;
+            let queue_depth = config.queue_depth;
+            let is_write = config.is_write;
+            let local_global_id = global_thread_id;
+
+            let handle = std::thread::spawn(move || {
+                if let Err(e) = worker::run_worker(
+                    local_global_id,
+                    &dev_path,
+                    io_size,
+                    queue_depth,
+                    is_write,
+                    device_size,
+                    &stop,
+                    &metrics,
+                ) {
+                    eprintln!("  Worker {} error: {}", local_global_id, e);
+                }
+            });
+            handles.push(handle);
+            global_thread_id += 1;
+        }
     }
 
     // Progress reporting
@@ -321,7 +342,7 @@ pub fn alloc_aligned(size: usize, align: usize) -> AlignedBuf {
 // Platform-specific functions - implemented in platform_windows.rs / platform_linux.rs
 
 #[cfg(windows)]
-pub use platform_windows::{get_device_size, open_device_write, DeviceHandle, write_at_raw};
+pub use platform_windows::{get_device_size, open_device_write, DeviceHandle, write_at_raw, normalize_device_path};
 
 #[cfg(target_os = "linux")]
 pub use platform_linux::{get_device_size, open_device_read, open_device_write, DeviceHandle, read_at_raw, write_at_raw};

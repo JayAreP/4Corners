@@ -14,21 +14,24 @@ Each test reports throughput (MB/s), IOPS, and latency (avg, p50, p99).
 ## Usage
 
 ```
-4c --device <DEVICE> [OPTIONS]
+4c --device <DEVICE> [--device <DEVICE2> ...] [OPTIONS]
 ```
 
 ## Required
 
 | Option | Description |
 |--------|-------------|
-| `-d`, `--device <PATH>` | Device or file path to benchmark |
+| `-d`, `--device <PATH>` | Device or file path to benchmark. Can be specified multiple times or comma-separated for multi-device testing. |
 
 ### Windows device paths
 ```
-\\.\PhysicalDrive1       Physical drive
+\\.\PhysicalDrive1       Physical drive (full path)
+4                        Physical drive (shorthand - converts to \\.\PhysicalDrive4)
 \\.\D:                   Volume
 C:\test\benchmark.dat    File
 ```
+
+**Note:** On Windows, device numbers are automatically converted to full paths. Both `4` and `\\.\PhysicalDrive4` refer to the same device.
 
 ### Linux device paths
 ```
@@ -60,18 +63,20 @@ Values: `all`, `read-tp`, `write-tp`, `read-iops`, `write-iops`
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--duration <SECS>` | `60` | Duration of each test in seconds |
+| `--duration <SECS>` | `30` | Duration of each test in seconds |
 
 ## Thread Configuration
 
 Each test type uses its own thread count. More threads generate more concurrent I/O.
 
+**Important:** When testing multiple devices, thread counts are **per device**. Total threads = devices × threads.
+
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--read-tp-threads` | `30` | Threads for read throughput test |
-| `--write-tp-threads` | `16` | Threads for write throughput test |
-| `--read-iops-threads` | `120` | Threads for read IOPS test |
-| `--write-iops-threads` | `120` | Threads for write IOPS test |
+| `--read-tp-threads` | `30` | Threads per device for read throughput test |
+| `--write-tp-threads` | `16` | Threads per device for write throughput test |
+| `--read-iops-threads` | `120` | Threads per device for read IOPS test |
+| `--write-iops-threads` | `120` | Threads per device for write IOPS test |
 
 ### Guidelines by device type
 
@@ -82,6 +87,8 @@ Each test type uses its own thread count. More threads generate more concurrent 
 | NVMe SSD | 32–64 | 128–256 |
 | High-end NVMe | 64–128 | 256–512 |
 
+**Multi-device example:** Testing 3 devices with 120 IOPS threads spawns 360 total threads (120 per device).
+
 ## Queue Depth
 
 Queue depth controls how many I/Os each thread keeps in flight simultaneously. Higher queue depth drives more parallelism per thread. This is a key parameter for IOPS performance.
@@ -90,10 +97,10 @@ Queue depth controls how many I/Os each thread keeps in flight simultaneously. H
 |--------|---------|-------------|
 | `--read-tp-qd` | `1` | Queue depth per thread for read throughput |
 | `--write-tp-qd` | `1` | Queue depth per thread for write throughput |
-| `--read-iops-qd` | `32` | Queue depth per thread for read IOPS |
-| `--write-iops-qd` | `32` | Queue depth per thread for write IOPS |
+| `--read-iops-qd` | `1` | Queue depth per thread for read IOPS |
+| `--write-iops-qd` | `1` | Queue depth per thread for write IOPS |
 
-Total concurrent I/Os = threads x queue depth. For example, the default IOPS config runs 120 threads x 32 QD = 3,840 concurrent I/Os.
+Total concurrent I/Os = threads × queue depth × devices. For example, the default IOPS config runs 120 threads × 1 QD × 1 device = 120 concurrent I/Os.
 
 ## Block Size
 
@@ -115,6 +122,38 @@ Block size is the amount of data transferred per I/O operation, specified in KB.
 | `--prep` | off | Write random data to device before testing |
 
 Use `--create-file` to benchmark against a file instead of a raw device. Use `--prep` to pre-condition a device with random data for accurate first-write performance.
+
+## Multi-Device Testing
+
+Test multiple devices simultaneously to achieve aggregate performance across devices. Results are combined:
+
+- **IOPS**: Summed across all devices
+- **Throughput (MB/s)**: Summed across all devices
+- **Latency**: Averaged across all devices
+
+### Specifying Multiple Devices
+
+```powershell
+# Multiple --device flags
+4c --device 4 --device 5 --device 6
+
+# Comma-separated (Windows shorthand)
+4c --device "4,5,6"
+
+# Full paths
+4c --device \\.\PhysicalDrive4 --device \\.\PhysicalDrive5
+
+# Mixed format
+4c --device "4,5" --device \\.\PhysicalDrive6
+```
+
+### Use Cases
+
+**Saturate storage fabric:** When a single device can't fully load your HBA/NIC/fabric, test multiple devices to measure aggregate capacity.
+
+**Parallel iSCSI targets:** Test multiple LUNs from the same iSCSI target to measure target-level performance.
+
+**RAID array testing:** Test multiple drives in a RAID setup to measure controller throughput.
 
 ## Examples
 
@@ -153,19 +192,49 @@ Use `--create-file` to benchmark against a file instead of a raw device. Use `--
 sudo ./4c --device /dev/nvme0n1 --duration 120
 ```
 
+### Multi-device: Test three drives together (Windows shorthand)
+```powershell
+4c --device "4,5,6" --duration 60
+```
+
+### Multi-device: IOPS test across multiple iSCSI LUNs
+```powershell
+4c --device 10 --device 11 --device 12 --tests read-iops,write-iops
+```
+
+### Multi-device: Saturate fabric with high thread count
+```powershell
+4c --device "4,5,6,7" --read-iops-threads 256 --write-iops-threads 256
+```
+
 ## Output
 
 ### Console
 Real-time progress is printed every 5 seconds during each test:
+
+**Single device:**
 ```
 Running Read IOPS Test...
-  Read test: 4KB blocks, 120 threads, QD=32, 60 seconds
-  Device size: 476.94 GB
+  Read test: 4KB blocks, 120 threads per device, QD=32, 60 seconds
+  Total device size: 476.94 GB (1 device)
     5s:  1234.56 MB/s |     316045 IOPS |    121.3 us avg lat
    10s:  1245.67 MB/s |     318891 IOPS |    119.8 us avg lat
   ...
   RESULT: 1240.12 MB/s | 317471 IOPS | avg 120.5 us | p50 98.2 us | p99 412.7 us
 ```
+
+**Multiple devices:**
+```
+Running Read IOPS Test...
+  Read test: 4KB blocks, 120 threads per device, QD=32, 60 seconds
+  Total device size: 1430.82 GB (3 devices)
+    5s:  3678.90 MB/s |     941800 IOPS |    122.5 us avg lat
+   10s:  3701.23 MB/s |     947515 IOPS |    121.1 us avg lat
+  ...
+  RESULT: 3692.45 MB/s | 945907 IOPS | avg 121.8 us | p50 99.3 us | p99 415.2 us
+```
+
+Metrics are aggregated: IOPS and throughput are summed, latency is averaged.
 
 ### Report Files
 Two files are saved to the current directory after each run:

@@ -8,6 +8,33 @@ use engine::TestConfig;
 use report::BenchmarkReport;
 use std::path::Path;
 
+/// Parse device argument(s) and normalize Windows paths
+fn parse_devices(device_args: Vec<String>) -> Vec<String> {
+    let mut devices = Vec::new();
+
+    for arg in device_args {
+        // Handle comma-separated values
+        for part in arg.split(',') {
+            let trimmed = part.trim();
+            if !trimmed.is_empty() {
+                #[cfg(windows)]
+                let normalized = engine::normalize_device_path(trimmed);
+                #[cfg(not(windows))]
+                let normalized = trimmed.to_string();
+
+                devices.push(normalized);
+            }
+        }
+    }
+
+    if devices.is_empty() {
+        eprintln!("Error: No valid devices specified");
+        std::process::exit(1);
+    }
+
+    devices
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -15,9 +42,17 @@ fn main() {
     println!("==============================");
     println!();
 
-    // Create file device if requested
+    // Parse and normalize device list
+    let devices = parse_devices(args.device);
+    let device_display = if devices.len() == 1 {
+        devices[0].clone()
+    } else {
+        format!("{} devices", devices.len())
+    };
+
+    // Create file device if requested (only for first device)
     if args.create_file {
-        if let Err(e) = engine::create_file_device(&args.device, args.file_size) {
+        if let Err(e) = engine::create_file_device(&devices[0], args.file_size) {
             eprintln!("Error creating file device: {}", e);
             std::process::exit(1);
         }
@@ -25,13 +60,15 @@ fn main() {
         println!();
     }
 
-    // Prep device if requested
+    // Prep device if requested (all devices)
     if args.prep {
-        if let Err(e) = engine::prep_device(&args.device) {
-            eprintln!("Error preparing device: {}", e);
-            std::process::exit(1);
+        for device in &devices {
+            if let Err(e) = engine::prep_device(device) {
+                eprintln!("Error preparing device {}: {}", device, e);
+                std::process::exit(1);
+            }
         }
-        println!("Device prepared successfully");
+        println!("Devices prepared successfully");
         println!();
     }
 
@@ -42,7 +79,7 @@ fn main() {
     let run_read_iops = run_all || args.tests.contains("read-iops");
     let run_write_iops = run_all || args.tests.contains("write-iops");
 
-    let mut report = BenchmarkReport::new(&args.device);
+    let mut report = BenchmarkReport::new(&device_display);
 
     println!("Starting benchmark tests...");
     println!();
@@ -51,7 +88,7 @@ fn main() {
     if run_read_tp {
         println!("Running Read Throughput Test...");
         let config = TestConfig {
-            device_path: args.device.clone(),
+            device_paths: devices.clone(),
             io_size: args.read_tp_bs as u64 * 1024,
             threads: args.read_tp_threads,
             queue_depth: args.read_tp_qd,
@@ -69,7 +106,7 @@ fn main() {
     if run_write_tp {
         println!("Running Write Throughput Test...");
         let config = TestConfig {
-            device_path: args.device.clone(),
+            device_paths: devices.clone(),
             io_size: args.write_tp_bs as u64 * 1024,
             threads: args.write_tp_threads,
             queue_depth: args.write_tp_qd,
@@ -87,7 +124,7 @@ fn main() {
     if run_read_iops {
         println!("Running Read IOPS Test...");
         let config = TestConfig {
-            device_path: args.device.clone(),
+            device_paths: devices.clone(),
             io_size: args.read_iops_bs as u64 * 1024,
             threads: args.read_iops_threads,
             queue_depth: args.read_iops_qd,
@@ -105,7 +142,7 @@ fn main() {
     if run_write_iops {
         println!("Running Write IOPS Test...");
         let config = TestConfig {
-            device_path: args.device.clone(),
+            device_paths: devices.clone(),
             io_size: args.write_iops_bs as u64 * 1024,
             threads: args.write_iops_threads,
             queue_depth: args.write_iops_qd,

@@ -19,7 +19,7 @@ The original Go implementation achieved only ~50% of potential IOPS due to synch
 - **No GC pauses** — Pure Rust with no garbage collection, clean latency measurements
 - **Aligned buffers** — Proper memory alignment for direct I/O across all platforms
 
-With default settings (32 queue depth × 120 threads = 3,840 concurrent I/Os), expect 2–5x higher IOPS compared to the Go version.
+With default settings (1 queue depth × 120 threads = 120 concurrent I/Os per device), expect significantly higher IOPS compared to the Go version through batched I/O completions.
 
 ## Quick Start
 
@@ -33,8 +33,12 @@ cargo build --release
 # Create a 10 GB test file and benchmark
 .\target\release\4c.exe --device C:\test\bench.dat --create-file --file-size 10
 
-# Test a physical drive (admin required)
-.\target\release\4c.exe --device \\.\PhysicalDrive1
+# Test a physical drive (admin required) — both formats work
+.\target\release\4c.exe --device 1                    # Shorthand
+.\target\release\4c.exe --device \\.\PhysicalDrive1   # Full path
+
+# Test multiple drives together
+.\target\release\4c.exe --device "1,2,3"
 ```
 
 ### Linux
@@ -59,11 +63,26 @@ sudo ./target/release/4c --device /dev/sdb
 
 ## Key Features
 
+### Multi-Device Testing 🆕
+- Test multiple devices simultaneously for aggregate performance
+- IOPS and throughput summed across all devices
+- Latency averaged across all devices
+- Windows shorthand: use `4` instead of `\\.\PhysicalDrive4`
+- Use case: Saturate storage fabric/HBA when single devices can't max out capacity
+
+```powershell
+# Test three drives together (aggregate IOPS/throughput)
+4c --device "4,5,6" --duration 60
+
+# Or with full paths
+4c --device \\.\PhysicalDrive4 --device \\.\PhysicalDrive5
+```
+
 ### Async I/O
-- **Windows**: IOCP-based overlapped I/O with per-thread queue depths up to 256
+- **Windows**: IOCP-based overlapped I/O with batched completions (`GetQueuedCompletionStatusEx`)
 - **Linux**: io_uring-based async I/O (kernel 5.1+)
 - Configurable queue depth per test type
-- Default IOPS queue depth: 32 per thread (total 3,840 concurrent I/Os)
+- Default IOPS queue depth: 1 per thread (120 concurrent I/Os per device with 120 threads)
 
 ### Performance Metrics
 - **Throughput** (MB/s) — Data transfer rate
@@ -94,6 +113,9 @@ Run all 4 tests or individual tests:
 4c --device \\.\PhysicalDrive1 `
   --read-iops-threads 256 --write-iops-threads 256 `
   --read-iops-qd 64 --write-iops-qd 64
+
+# Multi-device (aggregate) test
+4c --device "4,5,6" --read-iops-threads 128 --write-iops-threads 128
 
 # Short 30-second test
 4c --device \\.\D: --duration 30
@@ -151,10 +173,10 @@ Increase for high-performance devices:
 - SATA SSD: 128 threads for IOPS tests
 
 ### Queue Depth
-- **Throughput**: 1 (default) — Large blocks don't need deep queuing
-- **IOPS**: 32 (default) — Small blocks benefit from queuing
+- **Throughput**: 1 (default)
+- **IOPS**: 1 (default)
 
-Increase to 64–256 for maximum IOPS on capable devices.
+Increase to 4–256 per thread for maximum IOPS on capable devices.
 
 ### Block Size
 - **Read Throughput**: 128 KB (default)
@@ -217,6 +239,12 @@ src/
 - Linux io_uring requires kernel 5.1+
 - Windows requires Windows 10+
 - Direct I/O alignment is strict (4 KB sector size assumed)
+
+## Recent Enhancements
+
+- [x] **Batched I/O completions** — `GetQueuedCompletionStatusEx` on Windows for better throughput
+- [x] **Multi-device testing** — Test multiple devices simultaneously with aggregate metrics
+- [x] **Windows shorthand paths** — Use `4` instead of `\\.\PhysicalDrive4`
 
 ## Future Enhancements
 
