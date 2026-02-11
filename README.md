@@ -208,10 +208,6 @@ src/
 - [ ] Network storage (NFS/SMB) support
 - [ ] Preconfigured profiles (database, video, etc.)
 
-## License
-
-This project is a complete rewrite of the 4Corners benchmark in Rust. The original Go implementation is in the [4Corners/](../4Corners/) directory.
-
 ## Contributing
 
 Found a bug or have a suggestion? Check the source code in `src/` and feel free to file issues.
