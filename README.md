@@ -14,7 +14,6 @@ A high-performance disk I/O benchmark utility that measures the "4 corners" of s
 
 - **[CLI-REFERENCE.md](CLI-REFERENCE.md)** — Complete command-line parameter reference
 - **[BUILD.md](BUILD.md)** — Detailed build instructions for Windows and Linux, including cross-compilation
-- **[Original Go Project](../4Corners/)** — Reference implementation (kept for comparison)
 
 ## Key Features
 
