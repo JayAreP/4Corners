@@ -60,15 +60,31 @@ fn main() {
         println!();
     }
 
-    // Prep device if requested (all devices)
+    // Prep device if requested (all devices in parallel)
     if args.prep {
-        for device in &devices {
-            if let Err(e) = engine::prep_device(device) {
-                eprintln!("Error preparing device {}: {}", device, e);
+        println!("Preparing {} device{}...", devices.len(), if devices.len() == 1 { "" } else { "s" });
+
+        let mut handles = Vec::new();
+        for device in devices.clone() {
+            let handle = std::thread::spawn(move || {
+                if let Err(e) = engine::prep_device(&device) {
+                    eprintln!("Error preparing device {}: {}", device, e);
+                    Err(e)
+                } else {
+                    println!("  ✓ {}", device);
+                    Ok(())
+                }
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all preps to complete and check for errors
+        for handle in handles {
+            if handle.join().unwrap().is_err() {
                 std::process::exit(1);
             }
         }
-        println!("Devices prepared successfully");
+        println!("All devices prepared successfully");
         println!();
     }
 

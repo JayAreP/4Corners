@@ -133,6 +133,7 @@ Test multiple devices simultaneously to achieve aggregate performance across dev
 
 ### Specifying Multiple Devices
 
+**Windows:**
 ```powershell
 # Multiple --device flags
 4c --device 4 --device 5 --device 6
@@ -145,6 +146,21 @@ Test multiple devices simultaneously to achieve aggregate performance across dev
 
 # Mixed format
 4c --device "4,5" --device \\.\PhysicalDrive6
+```
+
+**Linux:**
+```bash
+# Multiple --device flags
+sudo ./4c --device /dev/sdb --device /dev/sdc --device /dev/sdd
+
+# Comma-separated
+sudo ./4c --device "/dev/sdb,/dev/sdc,/dev/sdd"
+
+# NVMe devices
+sudo ./4c --device /dev/nvme0n1 --device /dev/nvme1n1
+
+# Mixed NVMe and SATA
+sudo ./4c --device /dev/sdb --device /dev/nvme0n1
 ```
 
 ### Use Cases
@@ -197,14 +213,29 @@ sudo ./4c --device /dev/nvme0n1 --duration 120
 4c --device "4,5,6" --duration 60
 ```
 
-### Multi-device: IOPS test across multiple iSCSI LUNs
+### Multi-device: IOPS test across multiple iSCSI LUNs (Windows)
 ```powershell
 4c --device 10 --device 11 --device 12 --tests read-iops,write-iops
 ```
 
-### Multi-device: Saturate fabric with high thread count
+### Multi-device: Saturate fabric with high thread count (Windows)
 ```powershell
 4c --device "4,5,6,7" --read-iops-threads 256 --write-iops-threads 256
+```
+
+### Multi-device: Test three drives together (Linux)
+```bash
+sudo ./4c --device "/dev/sdb,/dev/sdc,/dev/sdd" --duration 60
+```
+
+### Multi-device: IOPS test across multiple NVMe drives (Linux)
+```bash
+sudo ./4c --device /dev/nvme0n1 --device /dev/nvme1n1 --device /dev/nvme2n1 --tests read-iops,write-iops
+```
+
+### Multi-device: Prep and benchmark multiple drives in parallel (Linux)
+```bash
+sudo ./4c --device "/dev/sdb,/dev/sdc,/dev/sdd" --prep --read-iops-threads 256 --write-iops-threads 256
 ```
 
 ## Output
