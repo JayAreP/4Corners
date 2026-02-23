@@ -65,6 +65,10 @@ pub fn get_device_size(path: &str) -> io::Result<u64> {
 
     let mut size: u64 = 0;
     // BLKGETSIZE64 = 0x80081272 on x86_64
+    // Use c_ulong on glibc, c_int on musl for ioctl compatibility
+    #[cfg(target_env = "musl")]
+    const BLKGETSIZE64: libc::c_int = 0x80081272u32 as libc::c_int;
+    #[cfg(not(target_env = "musl"))]
     const BLKGETSIZE64: libc::c_ulong = 0x80081272;
     let result = unsafe { libc::ioctl(fd, BLKGETSIZE64, &mut size) };
     unsafe { libc::close(fd) };

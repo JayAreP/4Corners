@@ -7,6 +7,7 @@ mod platform_linux;
 
 use crate::report::TestResult;
 use std::io;
+use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -273,7 +274,7 @@ pub fn prep_device(path: &str) -> io::Result<()> {
 
     let file = open_device_write(path)?;
 
-    let chunk_size: u64 = 1024 * 1024; // 1MB
+    let chunk_size: u64 = 4 * 1024 * 1024; // 4MB for better throughput
     let aligned_buf = alloc_aligned(chunk_size as usize, 4096);
     // Fill with random data
     for chunk in unsafe {
@@ -288,16 +289,29 @@ pub fn prep_device(path: &str) -> io::Result<()> {
     }
 
     let total_chunks = size / chunk_size;
+    let start = Instant::now();
+
+    print!("  Progress:   0.0%");
+    let _ = std::io::stdout().flush();
+
     for i in 0..total_chunks {
         let offset = i * chunk_size;
         write_at_raw(&file, &aligned_buf, offset)?;
-        if i % 1024 == 0 {
+        // Report every 256MB (64 x 4MB chunks)
+        if i % 64 == 0 {
             let pct = (i as f64 / total_chunks as f64) * 100.0;
-            print!("\r  Progress: {:.1}%", pct);
+            let elapsed = start.elapsed().as_secs_f64();
+            let written_mb = (i * chunk_size) as f64 / (1024.0 * 1024.0);
+            let mbps = if elapsed > 0.0 { written_mb / elapsed } else { 0.0 };
+            print!("\r  Progress: {:>5.1}%  ({:.0} MB/s)", pct, mbps);
+            let _ = std::io::stdout().flush();
         }
     }
 
-    println!("\r  Progress: 100.0% - Done!");
+    let elapsed = start.elapsed().as_secs_f64();
+    let total_mb = size as f64 / (1024.0 * 1024.0);
+    let mbps = if elapsed > 0.0 { total_mb / elapsed } else { 0.0 };
+    println!("\r  Progress: 100.0%  ({:.0} MB/s avg) - Done!    ", mbps);
     Ok(())
 }
 
