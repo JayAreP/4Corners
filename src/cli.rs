@@ -1,7 +1,7 @@
 use clap::Parser;
 
 #[derive(Parser, Debug, Clone)]
-#[command(name = "4c", about = "4Corners Disk Benchmark - CLI")]
+#[command(name = "4c", version, about = "4Corners Disk Benchmark - CLI")]
 pub struct Args {
     /// Device or file path(s) - can specify multiple times or comma-separated
     /// On Windows: use \\.\PhysicalDrive4 or just 4
